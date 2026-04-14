@@ -1,0 +1,25 @@
+{
+  "name": "job-agent",
+  "version": "1.0.0",
+  "description": "Agent-based job search automation system",
+  "type": "commonjs",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "setup": "node setup.js",
+    "start": "node index.js",
+    "apply": "node apply.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@notionhq/client": "^2.2.15",
+    "docx": "^8.5.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "mammoth": "^1.8.0",
+    "pdf-parse": "^1.1.1",
+    "playwright": "^1.44.0"
+  }
+}

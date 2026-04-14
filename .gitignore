@@ -1,0 +1,25 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+config/user.config.js
+
+# ── Resume files (keep .gitkeep placeholder) ─────────────────────────────────
+resume/*
+!resume/.gitkeep
+
+# ── Generated outputs (keep .gitkeep placeholder) ────────────────────────────
+outputs/resumes/*
+!outputs/resumes/.gitkeep
+outputs/applications.xlsx
+
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+
+# ── Playwright ───────────────────────────────────────────────────────────────
+.playwright/
+
+# ── OS / editor noise ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
