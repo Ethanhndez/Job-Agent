@@ -14,21 +14,23 @@
  */
 
 // Curated list of AI/ML companies known to use Ashby.
+// Verified against the live Ashby posting API — all tokens return HTTP 200 as of 2026-04-13.
 const ASHBY_COMPANIES = [
-  { name: 'Perplexity AI',   token: 'perplexity-ai'  },
-  { name: 'Groq',            token: 'groq'            },
-  { name: 'Anyscale',        token: 'anyscale'        },
-  { name: 'xAI',             token: 'xai'             },
-  { name: 'Moonshot AI',     token: 'moonshot'        },
-  { name: 'Contextual AI',   token: 'contextual'      },
-  { name: 'Reka AI',         token: 'reka'            },
-  { name: 'Sakana AI',       token: 'sakana-ai'       },
-  { name: 'Nuro',            token: 'nuro'            },
-  { name: 'Coreweave',       token: 'coreweave'       },
-  { name: 'Lambda Labs',     token: 'lambdalabs'      },
-  { name: 'Cohere',          token: 'cohere'          },
-  { name: 'Glean',           token: 'glean-2'         },
-  { name: 'Vanta',           token: 'vanta'           },
+  { name: 'OpenAI',          token: 'openai'          }, // 638 postings, ~68 ML/AI
+  { name: 'Harvey AI',       token: 'harvey'          }, // 232 postings, ~9 ML/AI (legal AI)
+  { name: 'Sierra AI',       token: 'sierra'          }, // 139 postings (conversational AI)
+  { name: 'Cohere',          token: 'cohere'          }, // 119 postings, ~13 ML/AI
+  { name: 'Cursor',          token: 'cursor'          }, // 78 postings, ~4 ML/AI (AI code editor)
+  { name: 'Perplexity AI',   token: 'perplexity'      }, // 76 postings, ~11 ML/AI
+  { name: 'Synthesia',       token: 'synthesia'       }, // 68 postings, ~7 ML/AI (video AI)
+  { name: 'Cognition',       token: 'cognition'       }, // 59 postings, ~2 ML/AI (Devin/SWE agent)
+  { name: 'Writer',          token: 'writer'          }, // 46 postings, ~19 ML/AI (enterprise LLM)
+  { name: 'Replit',          token: 'replit'          }, // 86 postings, ~3 ML/AI
+  { name: 'Lambda',          token: 'lambda'          }, // 30 postings (GPU cloud / LLM infra)
+  { name: 'Modal',           token: 'modal'           }, // 25 postings (serverless ML infra)
+  { name: 'Character AI',    token: 'character'       }, // 16 postings, ~8 ML/AI
+  { name: 'LlamaIndex',      token: 'llamaindex'      }, // 12 postings, ~3 ML/AI (RAG framework)
+  { name: 'Pika Labs',       token: 'pika'            }, // video generation AI
 ];
 
 const ML_TITLE_KEYWORDS = [
@@ -73,7 +75,9 @@ async function fetchAshbyBoard(token, company, today) {
     return [];
   }
 
-  const postings = data.jobPostings || [];
+  // API returns { jobs: [...], apiVersion: "..." } as of 2026.
+  // Earlier versions used { jobPostings: [...] } — keep fallback for safety.
+  const postings = data.jobs || data.jobPostings || [];
 
   return postings
     .filter(p => looksLikeMlRole(p.title || ''))
@@ -84,17 +88,24 @@ async function fetchAshbyBoard(token, company, today) {
 
       const loc = p.location || p.locationName || '';
 
+      // Compensation structure changed: now uses summaryComponents array.
+      // Falls back to legacy flat { minValue, maxValue, currency } shape.
       let salary = '';
       if (p.compensation) {
-        const { minValue, maxValue, currency } = p.compensation;
-        if (minValue || maxValue) {
-          salary = `${currency || ''}${minValue || ''}–${maxValue || ''}`;
+        const comp = p.compensation;
+        const sc = Array.isArray(comp.summaryComponents) && comp.summaryComponents[0];
+        if (sc && (sc.minValue || sc.maxValue)) {
+          salary = `${sc.currencyCode || ''}${sc.minValue || ''}–${sc.maxValue || ''}`;
+        } else if (comp.minValue || comp.maxValue) {
+          salary = `${comp.currency || comp.currencyCode || ''}${comp.minValue || ''}–${comp.maxValue || ''}`;
+        } else if (comp.compensationTierSummary) {
+          salary = comp.compensationTierSummary;
         }
       }
 
       return {
         title:     p.title    || '',
-        company:   p.company?.name || company,
+        company,
         location:  loc,
         salary,
         sourceUrl: p.jobUrl || `https://jobs.ashbyhq.com/${token}/${p.id}`,

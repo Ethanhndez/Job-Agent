@@ -13,21 +13,23 @@
  */
 
 // Curated list of AI/ML companies known to use Lever.
+// Verified against the live Lever v0 API — all tokens return HTTP 200 as of 2026-04-13.
 const LEVER_COMPANIES = [
-  { name: 'Together AI',     token: 'togetherai'     },
-  { name: 'Modal Labs',      token: 'modal-labs'     },
-  { name: 'Replicate',       token: 'replicate'      },
-  { name: 'Weights & Biases',token: 'wandb'          },
-  { name: 'Lightning AI',    token: 'lightning-ai'   },
-  { name: 'Stability AI',    token: 'stability-ai'   },
-  { name: 'Mistral AI',      token: 'mistral-ai'     },
-  { name: 'Sierra',          token: 'sierra-ai'      },
-  { name: 'Magic',           token: 'magic-ai'       },
-  { name: 'Hugging Face',    token: 'huggingface'    },
-  { name: 'Pika Labs',       token: 'pika-labs'      },
-  { name: 'Luma AI',         token: 'luma-ai'        },
-  { name: 'Poolside',        token: 'poolside'       },
-  { name: 'Glean',           token: 'glean'          },
+  { name: 'Mistral AI',           token: 'mistral'        }, // 145 postings
+  { name: 'Palantir',             token: 'palantir'       }, // 244 postings — AI/data platform
+  { name: 'Spotify',              token: 'spotify'        }, // 177 postings, ~20 ML/AI
+  { name: 'Zoox',                 token: 'zoox'           }, // 213 postings, ~40 ML/AI (AV)
+  { name: 'Hive AI',              token: 'hive'           }, // 74 postings, ~8 ML/AI
+  { name: 'Level AI',             token: 'levelai'        }, // 27 postings, ~6 ML/AI
+  { name: 'SonarSource',          token: 'sonarsource'    }, // 109 postings, ~8 ML/AI
+  { name: 'CI&T',                 token: 'ciandt'         }, // 196 postings, ~7 ML/AI (AI consulting)
+  { name: 'Toyota Research Inst', token: 'tri'            }, // 16 postings (AV/robotics AI research)
+  { name: 'Field AI',             token: 'field-ai'       }, // 69 postings (autonomous robotics)
+  { name: 'Fullscript',           token: 'fullscript'     }, // 28 postings, ~3 ML/AI
+  { name: 'IMO Health',           token: 'imo-online'     }, // 10 postings, ~3 ML/AI (clinical AI)
+  { name: 'Aera Technology',      token: 'aeratechnology' }, // 28 postings (agentic AI/LLM)
+  { name: 'WeRide',               token: 'weride'         }, // 32 postings (autonomous driving AI)
+  { name: 'Anyscale',             token: 'anyscale'       }, // Ray distributed computing / LLM infra
 ];
 
 const ML_TITLE_KEYWORDS = [
