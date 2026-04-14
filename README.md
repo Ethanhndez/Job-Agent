@@ -1,187 +1,204 @@
-# job-agent
+# Job-Agent
 
-An agent-based job search automation system that scrapes listings from multiple sources, filters them with a four-tier title/keyword/exclusion/location system, writes structured records to a Notion workspace, and can auto-apply to matching roles — all orchestrated by Claude via the Anthropic API.
+## Overview
 
----
+Job-Agent is an agent-based technical job search automation system built in Node.js. It scrapes multiple job sources, filters for broader CIS-relevant technical roles, deduplicates listings, classifies them with normalized metadata, and syncs the results into a Notion database for review.
 
-## Automated Workflow
+The project is designed for a practical workflow: collect roles, keep the dataset clean, and make the Notion board fast to scan and maintain.
 
-| Step | What happens |
-|------|--------------|
-| **1. Scrape** | Playwright scrapers pull listings from Wellfound, Greenhouse, Lever, Ashby, Built In Austin/Houston, and YC Jobs |
-| **2. Filter** | Three-tier filter removes irrelevant titles, missing keywords, and disqualifying phrases |
-| **3. Organize** | Surviving listings are written to a Notion database and an Excel tracker |
-| **4. Review** | You inspect the Notion board and mark roles you want to pursue |
-| **5. Apply** | `apply.js` uses Claude to tailor your resume + generate a cover letter, then submits via Playwright |
-| **6. Track** | Application status, dates, and notes are updated in both Notion and the Excel sheet |
+## What it does
 
----
+Job-Agent follows a simple sequential pipeline:
 
-## Tech Stack
+1. Scrape job listings from supported sources
+2. Filter for relevant technical roles
+3. Deduplicate by source URL and fingerprint
+4. Classify each listing with normalized metadata
+5. Sync results into Notion
 
-| Layer | Technology |
-|-------|------------|
-| Runtime | Node.js >= 18 |
-| AI / LLM | Anthropic Claude (`@anthropic-ai/sdk`) |
-| Browser automation | Playwright |
-| Workspace | Notion (`@notionhq/client`) |
-| Excel tracking | ExcelJS |
-| Resume parsing | pdf-parse, mammoth (DOCX) |
-| Document generation | docx |
-| Config | dotenv |
+The system currently emphasizes discovery and organization rather than ranking or application automation.
 
----
+## Supported sources
 
-## Job Sources
+- Greenhouse
+- Lever
+- Ashby
+- BuiltIn Austin
+- BuiltIn Houston
+- YC Jobs
+- Wellfound — skipped by design because authentication is required
 
-- **Wellfound** — startup-focused roles
-- **Greenhouse** — ATS used by many mid-to-large tech companies
-- **Lever** — ATS popular with growth-stage startups
-- **Ashby** — modern ATS used by AI-native companies
-- **Built In Austin** — Austin tech scene
-- **Built In Houston** — Houston tech scene
-- **YC Jobs** — Y Combinator portfolio companies
+All sources are executed sequentially. The scraper does not run sources in parallel.
 
----
+## Metadata intelligence
+
+Job-Agent writes normalized metadata into Notion for visual scanning and downstream organization.
+
+### Employment Type
+
+- `Internship`
+- `Full-Time`
+- `Unknown`
+
+### Experience Level
+
+- `Internship`
+- `Entry Level`
+- `Associate`
+- `Mid Level`
+- `Senior`
+- `Staff+`
+- `Unknown`
+
+### Color-coded Notion tags
+
+Employment Type colors:
+
+- `Internship` → `purple`
+- `Full-Time` → `green`
+- `Unknown` → `gray`
+
+Experience Level colors:
+
+- `Internship` → `purple`
+- `Entry Level` → `blue`
+- `Associate` → `green`
+- `Mid Level` → `yellow`
+- `Senior` → `orange`
+- `Staff+` → `red`
+- `Unknown` → `gray`
+
+### Historical metadata backfill
+
+Older rows can be repaired with:
+
+```bash
+node scripts/backfillMetadata.js
+```
+
+The backfill script scans the existing Job Listings database, classifies rows with missing or invalid metadata, and only updates fields that actually need repair.
+
+## Current target role categories
+
+The project is no longer narrowly AI-only. It now targets broader CIS-oriented technical roles such as:
+
+- software engineering
+- software development
+- full stack / backend / frontend
+- data / analytics / BI
+- cybersecurity / security engineering
+- infrastructure / cloud / devops / SRE
+- product engineering
+- product design / UX / UI
+- solutions / forward deployed / implementation
+- AI / ML roles
+
+This broader direction is implemented through the current title, keyword, exclusion, and location filters in the local config and shared filter utilities.
+
+## Tech stack / architecture
+
+Main runtime stack:
+
+- Node.js
+- Playwright
+- Notion API
+- Anthropic SDK
+- CommonJS modules
+
+High-level repo structure:
+
+- `agents/` — scraper orchestration and Notion integration
+- `utils/` — shared filtering, fingerprinting, and classification helpers
+- `scripts/` — one-off maintenance and migration scripts
+- `config/` — local user config and generated Notion config
+- `setup.js` — creates the Notion workspace and database structure
+- `index.js` — scraper entry point used by `npm start`
+
+Key current files:
+
+- `agents/scraper.js`
+- `agents/notionWriter.js`
+- `utils/dedupe.js`
+- `utils/jobClassifier.js`
+- `scripts/backfillMetadata.js`
 
 ## Setup
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/<your-handle>/job-agent.git
 cd job-agent
-
-# 2. Install dependencies
 npm install
-
-# 3. Configure environment variables
 cp .env.example .env
-# Open .env and fill in ANTHROPIC_API_KEY, NOTION_TOKEN, NOTION_PARENT_PAGE_ID
-
-# 4. Configure personal settings
 cp config/user.config.example.js config/user.config.js
-# Open config/user.config.js and fill in your details, job titles, and keywords
+```
 
-# 5. Add your resume
-# Copy your resume PDF or DOCX into /resume/ and update config.resume.filename
+Then fill in:
 
-# 6. Run first-time setup (creates Notion database schema)
+- `.env`
+  - `ANTHROPIC_API_KEY`
+  - `NOTION_TOKEN`
+  - `NOTION_PARENT_PAGE_ID`
+- `config/user.config.js`
+  - personal info
+  - local filtering preferences
+  - resume filename
+
+After configuration, run the first-time Notion setup:
+
+```bash
 npm run setup
 ```
 
----
-
-## Usage
-
-### Automated weekly scrape (GitHub Actions)
-
-Push this repo to GitHub, then add three repository secrets:
-
-| Secret | Value |
-|--------|-------|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
-| `NOTION_TOKEN` | Your Notion integration token |
-| `NOTION_PARENT_PAGE_ID` | Your Notion parent page ID |
-
-The workflow in `.github/workflows/weekly-scrape.yml` runs every Monday at 8 AM UTC and opens a PR summarising new listings.
-
-### Manual scrape
+## Running the scraper
 
 ```bash
 npm start
 ```
 
-Runs all scrapers, filters results, and populates Notion + Excel.
+This runs the full sequential scrape, filter, dedupe, classify, and Notion sync pipeline.
 
-### Apply to a role
+## Backfilling historical metadata
 
 ```bash
-npm run apply
+node scripts/backfillMetadata.js
 ```
 
-Interactive prompt: paste a Notion page URL or job URL, review the tailored resume diff and cover letter, then confirm to auto-submit.
+Use this after metadata or schema upgrades when you want to repair older Notion rows that are missing `Employment Type` or `Experience Level`.
 
----
+## Notion integration
 
-## Filtering System
+Job-Agent uses a Notion workspace created by `setup.js`.
 
-Listings pass through four sequential gates before being written to Notion.
+The Job Listings database is used to:
 
-```js
-// Tier 1 — title must match at least one entry in config.jobTitles
-const titleMatch = config.jobTitles.some(t =>
-  listing.title.toLowerCase().includes(t.toLowerCase())
-);
+- store surviving listings
+- track review status
+- store normalized metadata
+- preserve a fingerprint for deduplication
 
-// Tier 2 — description must contain at least one keyword from config.keywords
-const keywordMatch = config.keywords.some(k =>
-  listing.description.toLowerCase().includes(k.toLowerCase())
-);
+The project also normalizes Notion select definitions and colors so the board stays visually consistent across fresh setups and existing databases.
 
-// Tier 3 — description must NOT contain any disqualifying phrase
-const notExcluded = !config.excludeKeywords.some(k =>
-  listing.description.toLowerCase().includes(k.toLowerCase())
-);
+## Current limitations
 
-// Tier 4 — location must match a preferred location unless the role is remote
-const locationText = (listing.location || '').toLowerCase();
-const locationMatch =
-  config.preferredLocations.length === 0 ||
-  locationText.includes('remote') ||
-  config.preferredLocations.some(loc =>
-    locationText.includes(loc.toLowerCase())
-  );
-
-const passes = titleMatch && keywordMatch && notExcluded && locationMatch;
-```
-
-Tune `config/user.config.js` to widen or narrow each tier independently.
-
----
-
-## Resume Tailoring Guardrail
-
-The application agent asks Claude to identify the **top 3–5 bullet points** from your base resume that best match the job description and reorder/lightly reword them for relevance. It will **never invent experience you do not have** — the prompt explicitly constrains it to content already present in your resume. A diff is shown for your approval before any file is written or submitted.
-
----
-
-## Notion Workspace Structure
-
-```
-📁 Job Search (parent page you configure)
-└── 🗃️ Job Listings (database created by setup.js)
-    ├── Job Title
-    ├── Company
-    ├── Location
-    ├── Salary
-    ├── Source URL
-    ├── Status          (New / Reviewing / Apply / Applied / Interviewing / Rejected / Offer)
-    └── Applied Date
-```
-
----
-
-## Excel Tracker Columns
-
-| Column | Description |
-|--------|-------------|
-| Job Title | Role name |
-| Company | Employer |
-| Location | City / Remote |
-| Source | Which scraper found it |
-| URL | Direct link to listing |
-| Status | Application stage |
-| Fit Score | 1–10 relevance score |
-| Applied Date | Date submitted |
-| Follow-up Date | Calculated +7 days from applied |
-| Notes | Free-text field |
-
----
+- Wellfound is skipped because authentication is required
+- Duplicate-heavy runs may produce few or zero new writes even when the scraper is working correctly
+- Historical metadata backfill quality depends on what information already exists in stored Notion rows
+- Some filtering tradeoffs still exist, especially around blunt exclusion logic
+- The current system is stronger at collection and organization than prioritization or ranking
 
 ## Roadmap
 
-| Version | Milestone |
-|---------|-----------|
-| **v1.0** | Scrapers, four-tier filter, Notion writer, Excel tracker, GitHub Actions weekly run |
-| **v1.1** | `apply.js` auto-application flow with resume tailoring and cover letter generation |
-| **v2.0** | Interview prep agent, follow-up email drafter, multi-resume profile support |
+- refine filter precision without losing broad CIS coverage
+- add lightweight priority scoring
+- improve ranking for internships and entry-level roles
+- expand source coverage carefully
+- improve automation and scheduling
+
+## Notes for contributors
+
+- CommonJS only
+- async/await only
+- keep scraper execution sequential
+- keep changes minimal and local
+- avoid unrelated refactors during focused passes
+- keep classifier, schema, and filter logic centralized when possible
