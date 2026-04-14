@@ -174,7 +174,7 @@ async function main() {
       icon: { type: 'emoji', emoji: '📊' },
       properties: {
         // Primary key — Notion requires exactly one "title" property
-        'Title': {
+        'Job Title': {
           title: {},
         },
         'Company': {
@@ -189,7 +189,7 @@ async function main() {
         'Source URL': {
           url: {},
         },
-        'Date Found': {
+        'Date Posted': {
           date: {},
         },
         'Status': {
@@ -207,12 +207,6 @@ async function main() {
         },
         'Applied Date': {
           date: {},
-        },
-        'Resume Version': {
-          rich_text: {},
-        },
-        'Cover Letter': {
-          checkbox: {},
         },
         // Fingerprint is a hash used for deduplication — stored as plain text
         'Fingerprint': {

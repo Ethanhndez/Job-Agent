@@ -90,13 +90,17 @@ async function fetchGreenhouseBoard(token, company, today) {
 
       const location = j.location?.name || '';
 
+      const datePosted = j.updated_at
+        ? j.updated_at.split('T')[0]
+        : today;
+
       return {
-        title:       j.title       || '',
+        title:       j.title       || 'Not listed',
         company:     j.company     ? j.company.name : company,
         location,
-        salary:      '',
+        salary:      'Not listed',
         sourceUrl:   j.absolute_url || `https://boards.greenhouse.io/${token}/jobs/${j.id}`,
-        dateFound:   today,
+        datePosted,
         description,
       };
     });
@@ -112,7 +116,7 @@ async function fetchGreenhouseBoard(token, company, today) {
  *
  * @param {import('playwright').Browser} _browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,dateFound,description}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted,description}>>}
  */
 async function scrapeGreenhouse(_browser, config) {
   const max   = config.scraper.maxJobsPerSource;

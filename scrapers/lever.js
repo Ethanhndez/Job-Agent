@@ -81,17 +81,30 @@ async function fetchLeverBoard(token, company, today) {
       const lists       = p.descriptionBody?.descriptionPlain || p.descriptionPlain || '';
       const description = (p.description || lists).replaceAll(/<[^>]+>/g, ' ').trim();
       const location    = p.categories?.location || p.workplaceType || '';
-      const salary      = p.salaryRange
-        ? `${p.salaryRange.currency || ''}${p.salaryRange.min || ''}–${p.salaryRange.max || ''}`
-        : '';
+
+      // Format salary as "$XXX,XXX - $XXX,XXX"; fall back to "Not listed".
+      let salary = 'Not listed';
+      if (p.salaryRange) {
+        const { min, max, currency } = p.salaryRange;
+        const sym = (!currency || currency.toUpperCase() === 'USD') ? '$' : `${currency} `;
+        const fmt = n => Number(n).toLocaleString('en-US');
+        if (min && max) salary = `${sym}${fmt(min)} - ${sym}${fmt(max)}`;
+        else if (min)   salary = `${sym}${fmt(min)}+`;
+        else if (max)   salary = `up to ${sym}${fmt(max)}`;
+      }
+
+      // Use the posting's creation timestamp when available.
+      const datePosted = p.createdAt
+        ? new Date(p.createdAt).toISOString().split('T')[0]
+        : today;
 
       return {
-        title:       p.text        || '',
+        title:       p.text        || 'Not listed',
         company,
         location,
         salary,
         sourceUrl:   p.hostedUrl   || `https://jobs.lever.co/${token}/${p.id}`,
-        dateFound:   today,
+        datePosted,
         description,
       };
     });
@@ -106,7 +119,7 @@ async function fetchLeverBoard(token, company, today) {
  *
  * @param {import('playwright').Browser} _browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,dateFound,description}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted,description}>>}
  */
 async function scrapeLever(_browser, config) {
   const max   = config.scraper.maxJobsPerSource;

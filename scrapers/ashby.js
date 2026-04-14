@@ -51,6 +51,34 @@ function looksLikeMlRole(title) {
 }
 
 /**
+ * Formats an Ashby compensation object as "$XXX,XXX - $XXX,XXX".
+ * Returns "Not listed" when no usable data is present.
+ *
+ * @param {object|undefined} compensation - p.compensation from the Ashby API
+ * @returns {string}
+ */
+function formatAshbySalary(compensation) {
+  if (!compensation) return 'Not listed';
+
+  const comp = compensation;
+  const sc   = Array.isArray(comp.summaryComponents) && comp.summaryComponents[0];
+  const cur  = (sc?.currencyCode || comp.currency || comp.currencyCode || 'USD').toUpperCase();
+  const sym  = cur === 'USD' ? '$' : `${cur} `;
+  const fmt  = n => Number(n).toLocaleString('en-US');
+  const minV = sc ? sc.minValue : comp.minValue;
+  const maxV = sc ? sc.maxValue : comp.maxValue;
+
+  if (minV && maxV) return `${sym}${fmt(minV)} - ${sym}${fmt(maxV)}`;
+
+  if (comp.compensationTierSummary) {
+    const m = /(\$[\d,]+(?:K)?)\s*[-–]\s*(\$[\d,]+(?:K)?)/.exec(comp.compensationTierSummary);
+    if (m) return `${m[1]} - ${m[2]}`;
+  }
+
+  return 'Not listed';
+}
+
+/**
  * Fetches job postings from one Ashby board via the public posting API.
  *
  * @param {string} token    - Ashby company token (subdomain in jobs.ashbyhq.com/{token})
@@ -88,28 +116,20 @@ async function fetchAshbyBoard(token, company, today) {
 
       const loc = p.location || p.locationName || '';
 
-      // Compensation structure changed: now uses summaryComponents array.
-      // Falls back to legacy flat { minValue, maxValue, currency } shape.
-      let salary = '';
-      if (p.compensation) {
-        const comp = p.compensation;
-        const sc = Array.isArray(comp.summaryComponents) && comp.summaryComponents[0];
-        if (sc && (sc.minValue || sc.maxValue)) {
-          salary = `${sc.currencyCode || ''}${sc.minValue || ''}–${sc.maxValue || ''}`;
-        } else if (comp.minValue || comp.maxValue) {
-          salary = `${comp.currency || comp.currencyCode || ''}${comp.minValue || ''}–${comp.maxValue || ''}`;
-        } else if (comp.compensationTierSummary) {
-          salary = comp.compensationTierSummary;
-        }
-      }
+      const salary = formatAshbySalary(p.compensation);
+
+      // Use the posting's published timestamp when available.
+      const datePosted = p.publishedAt
+        ? new Date(p.publishedAt).toISOString().split('T')[0]
+        : today;
 
       return {
-        title:     p.title    || '',
+        title:     p.title    || 'Not listed',
         company,
         location:  loc,
         salary,
         sourceUrl: p.jobUrl || `https://jobs.ashbyhq.com/${token}/${p.id}`,
-        dateFound: today,
+        datePosted,
         description,
       };
     });
@@ -124,7 +144,7 @@ async function fetchAshbyBoard(token, company, today) {
  *
  * @param {import('playwright').Browser} _browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,dateFound,description}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted,description}>>}
  */
 async function scrapeAshby(_browser, config) {
   const max   = config.scraper.maxJobsPerSource;

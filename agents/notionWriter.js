@@ -122,7 +122,7 @@ async function jobExistsByFingerprint(notionClient, dbId, fingerprint) {
  *     location:    string,
  *     salary:      string,  // empty string if not available
  *     sourceUrl:   string,
- *     dateFound:   string,  // ISO 8601 date string, e.g. "2025-04-13"
+ *     datePosted:  string,  // ISO 8601 date string, e.g. "2025-04-13"
  *     fingerprint: string,  // hash from dedupe.js
  *   }
  *
@@ -136,7 +136,7 @@ async function createJobPage(notionClient, dbId, job) {
     const page = await notionClient.pages.create({
       parent: { database_id: dbId },
       properties: {
-        'Title': {
+        'Job Title': {
           title: [{ text: { content: job.title } }],
         },
         'Company': {
@@ -146,13 +146,13 @@ async function createJobPage(notionClient, dbId, job) {
           rich_text: [{ text: { content: job.location } }],
         },
         'Salary': {
-          rich_text: [{ text: { content: job.salary || '' } }],
+          rich_text: [{ text: { content: job.salary || 'Not listed' } }],
         },
         'Source URL': {
           url: job.sourceUrl,
         },
-        'Date Found': {
-          date: { start: job.dateFound },
+        'Date Posted': {
+          date: { start: job.datePosted },
         },
         'Status': {
           select: { name: 'New' },
