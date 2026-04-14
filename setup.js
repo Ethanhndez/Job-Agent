@@ -147,6 +147,21 @@ async function main() {
     fatal(`Failed to create root page: ${err.message}`);
   }
 
+  // ── Step 4b: Append formatted content blocks to the root page ──────────────
+
+  step('4b', 'Adding content blocks to root page…');
+
+  try {
+    await notion.blocks.children.append({
+      block_id: rootPage.id,
+      children: buildRootPageBlocks(),
+    });
+    ok('Content blocks appended.');
+  } catch (err) {
+    // Non-fatal — the databases are more important than the page design.
+    info(`Warning: could not append content blocks (${err.message}). Continuing.`);
+  }
+
   // ── Step 5: Create Job Listings DB ───────────────────────────────────────────
 
   step(5, `Creating "${JOB_LISTINGS_TITLE}" database…`);
@@ -288,6 +303,86 @@ async function main() {
 `);
 }
 
+// ─── Root page content ────────────────────────────────────────────────────────
+
+/**
+ * Builds the array of Notion block objects that populate the "Job Agent" root
+ * page with structured documentation.  Extracted into a function so it can be
+ * shared with scripts/updateNotionPage.js.
+ *
+ * @returns {Array} Notion block objects ready for blocks.children.append
+ */
+function buildRootPageBlocks() {
+  const h1 = text => ({
+    object: 'block', type: 'heading_1',
+    heading_1: { rich_text: [{ type: 'text', text: { content: text } }] },
+  });
+
+  const h2 = text => ({
+    object: 'block', type: 'heading_2',
+    heading_2: { rich_text: [{ type: 'text', text: { content: text } }] },
+  });
+
+  const p = text => ({
+    object: 'block', type: 'paragraph',
+    paragraph: { rich_text: [{ type: 'text', text: { content: text } }] },
+  });
+
+  const divider = () => ({ object: 'block', type: 'divider', divider: {} });
+
+  const bullet = text => ({
+    object: 'block', type: 'bulleted_list_item',
+    bulleted_list_item: { rich_text: [{ type: 'text', text: { content: text } }] },
+  });
+
+  return [
+    // ── Header ──────────────────────────────────────────────────────────────
+    h1('Job Agent'),
+    p(
+      'An agent-based job search automation system for AI/ML engineers. ' +
+      'Scrapes 7 job boards weekly, filters listings by title, keywords, and location, ' +
+      'and generates tailored resumes and cover letters using Claude AI.'
+    ),
+    divider(),
+
+    // ── How It Works ────────────────────────────────────────────────────────
+    h2('How It Works'),
+    bullet('Scrape — GitHub Actions runs every Sunday at 8am. Playwright visits 7 job boards and pulls matching listings.'),
+    bullet('Filter — 3-tier filter (title → keywords → location) keeps only relevant roles.'),
+    bullet('Organize — New jobs are written to the Job Listings DB below. Duplicates are automatically skipped.'),
+    bullet('Review — Browse the Job Listings DB, change Status to Apply on roles you want to pursue.'),
+    bullet('Apply — Run node apply.js. Claude reads each job description and generates a tailored resume and cover letter.'),
+    bullet('Track — Every application is logged to applications.xlsx and the Applications DB.'),
+    divider(),
+
+    // ── Status Progression ───────────────────────────────────────────────────
+    h2('Status Progression'),
+    p('New → Reviewing → Apply → Applied → Interviewing → Rejected → Offer'),
+    divider(),
+
+    // ── Tech Stack ───────────────────────────────────────────────────────────
+    h2('Tech Stack'),
+    bullet('Scheduler: GitHub Actions'),
+    bullet('Scraping: Playwright (Chromium)'),
+    bullet('LLM: Claude via Anthropic SDK'),
+    bullet('Workspace: Notion API'),
+    bullet('Resume parsing: pdf-parse + mammoth'),
+    bullet('Resume output: docx'),
+    bullet('Excel tracking: exceljs'),
+    divider(),
+
+    // ── Job Sources ──────────────────────────────────────────────────────────
+    h2('Job Sources (v1.0)'),
+    bullet('Wellfound'),
+    bullet('Greenhouse'),
+    bullet('Lever'),
+    bullet('Ashby'),
+    bullet('Built In Austin'),
+    bullet('Built In Houston'),
+    bullet('YC Jobs'),
+  ];
+}
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 /**
@@ -349,6 +444,13 @@ async function findChildPageByTitle(parentPageId, targetTitle) {
   }
 }
 
+// ─── Exports (for scripts/updateNotionPage.js) ───────────────────────────────
+
+module.exports = { buildRootPageBlocks };
+
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
-main().catch(err => fatal(`Unexpected error: ${err.message}`));
+// Guard so that requiring this file from another script does not re-run setup.
+if (require.main === module) {
+  main().catch(err => fatal(`Unexpected error: ${err.message}`));
+}
