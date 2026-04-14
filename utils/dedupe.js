@@ -89,13 +89,14 @@ function applyFilters(job, config) {
     if (failsTier3) return { pass: false, failedTier: 3 };
   }
 
-  // ── Tier 4: location must match a preferred location (or be remote) ─────────
+  // ── Tier 4: location must match a preferred location (or be remote/blank) ───
   const preferred = config.preferredLocations || [];
   if (preferred.length > 0) {
-    // "Remote" in the location field is always an automatic pass.
+    // Empty/null location passes — a missing location often means remote-friendly.
+    const isBlank  = !location;
     const isRemote = location.includes('remote');
 
-    const passesTier4 = isRemote || preferred.some(
+    const passesTier4 = isBlank || isRemote || preferred.some(
       p => location.includes(p.toLowerCase())
     );
     if (!passesTier4) return { pass: false, failedTier: 4 };
