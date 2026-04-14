@@ -17,6 +17,57 @@ const USER_AGENT =
   'AppleWebKit/537.36 (KHTML, like Gecko) ' +
   'Chrome/124.0.0.0 Safari/537.36';
 
+const AI_TITLE_PATTERNS = [
+  /\bai\b/i,
+  /\bml\b/i,
+  /machine learning/i,
+  /artificial intelligence/i,
+  /applied ai/i,
+  /\bllm\b/i,
+  /\bnlp\b/i,
+  /generative ai/i,
+  /research engineer/i,
+  /research scientist/i,
+  /applied scientist/i,
+  /data scientist/i,
+  /data science/i,
+  /computer vision/i,
+  /deep learning/i,
+  /ai platform/i,
+  /ai infrastructure/i,
+  /\bagi\b/i,
+  /robotics/i,
+  /autonomy/i,
+  /autonomous/i,
+  /perception/i,
+  /dexterous/i,
+  /manipulation/i,
+  /motion control/i,
+  /\bintern(ship)?\b/i,
+  /\bco-?op\b/i,
+];
+
+const IRRELEVANT_TITLE_PATTERNS = [
+  /business development/i,
+  /\bsales\b/i,
+  /marketing/i,
+  /\blegal\b/i,
+  /counsel/i,
+  /attorney/i,
+  /\bsupport\b/i,
+  /customer success/i,
+  /partnership/i,
+  /\brecruit/i,
+  /\bproduct manager\b/i,
+  /product marketing/i,
+  /account executive/i,
+  /solutions representative/i,
+  /event coordinator/i,
+  /\bfinance\b/i,
+  /\bfacilities\b/i,
+  /\bsubcontracts\b/i,
+];
+
 // ─── Salary / date helpers ────────────────────────────────────────────────────
 
 /**
@@ -44,33 +95,6 @@ function cleanSalary(raw) {
   if (singleMatch) return singleMatch[0];
 
   return 'Not listed';
-}
-
-/**
- * Converts a raw date string from the DOM ("3 days ago", "2024-04-10", etc.)
- * to an ISO 8601 date string (YYYY-MM-DD). Falls back to today on failure.
- */
-function parseDateText(raw, today) {
-  if (!raw || typeof raw !== 'string') return today;
-  const s = raw.trim();
-
-  // "Xd", "X days ago", "X hours ago", "X weeks ago"
-  const agoMatch = /(\d+)\s*(d\b|h\b|m\b|min|day|hour|week)/i.exec(s);
-  if (agoMatch) {
-    const n    = Number.parseInt(agoMatch[1], 10);
-    const unit = agoMatch[2].toLowerCase();
-    const d    = new Date();
-    if      (unit.startsWith('d')) d.setDate(d.getDate() - n);
-    else if (unit.startsWith('w')) d.setDate(d.getDate() - n * 7);
-    // hours / minutes → same day, no adjustment
-    return d.toISOString().split('T')[0];
-  }
-
-  // Try any parseable date string
-  const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
-
-  return today;
 }
 
 // BuiltIn category slugs to scrape for Austin.
@@ -107,6 +131,7 @@ function extractBuiltinJobs() {
         company:  companyEl ? companyEl.innerText.trim() : 'Unknown',
         location: 'Austin, TX',
         salary:   '',
+        cardText: parent ? parent.innerText.trim() : link.innerText.trim(),
         href:     link.href,
       };
     });
@@ -134,28 +159,74 @@ function extractBuiltinJobs() {
       .find(el => el.children.length === 0 && /remote|hybrid|in.office|TX|Austin/i.test(el.innerText.trim()));
     const location = locEl ? locEl.innerText.trim() : 'Austin, TX';
 
-    // Date posted — prefer <time datetime="...">; fall back to relative text.
-    const timeEl = card.querySelector('time[datetime]') ||
-      card.querySelector('[class*="date"], [class*="posted"], [class*="time-ago"]');
-    let dateRaw = '';
-    if (timeEl) {
-      dateRaw = timeEl.getAttribute('datetime') || timeEl.innerText.trim();
-    } else {
-      const scanEl = Array.from(card.querySelectorAll('span, p, div'))
-        .find(el => el.children.length === 0 &&
-          /\d+\s*(d\b|h\b|day|hour|week|ago)/i.test(el.innerText));
-      if (scanEl) dateRaw = scanEl.innerText.trim();
-    }
-
     return {
       title:    titleText,
       company,
       location,
       salary:   salaryEl ? salaryEl.innerText.trim() : '',
-      dateRaw,
+      cardText: card.innerText.trim(),
       href:     titleEl  ? titleEl.href              : '',
     };
   });
+}
+
+function looksRelevantBuiltinRole(raw) {
+  const title = (raw.title || '').trim();
+  if (!title) return false;
+
+  if (IRRELEVANT_TITLE_PATTERNS.some(pattern => pattern.test(title))) {
+    return false;
+  }
+
+  const haystack = `${title}\n${raw.cardText || ''}`;
+  if (!AI_TITLE_PATTERNS.some(pattern => pattern.test(haystack))) {
+    return false;
+  }
+
+  if (/\bintern(ship)?\b|\bco-?op\b/i.test(haystack)) {
+    return /machine learning|artificial intelligence|applied ai|\bai\b|\bml\b|data science|robotics|research|computer vision|perception|autonomy|autonomous/i.test(haystack);
+  }
+
+  return true;
+}
+
+/**
+ * Fetches the company name from a Built In job detail page when the card-level
+ * extraction is blank.
+ *
+ * @param {import('playwright').Browser} browser
+ * @param {string} url
+ * @returns {Promise<string>}
+ */
+async function fetchBuiltinCompanyFromDetail(browser, url) {
+  const page = await browser.newPage();
+
+  try {
+    await page.setExtraHTTPHeaders({ 'User-Agent': USER_AGENT });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    return await page.evaluate(() => {
+      const exactLink = document.querySelector('[data-id="company-title"], a[href*="/company/"]');
+      const exactText = exactLink?.innerText?.trim();
+      if (exactText) return exactText;
+
+      const heading = document.querySelector('h1')?.innerText?.trim() || '';
+      const bodyText = document.body.innerText;
+      const headingIndex = bodyText.indexOf(heading);
+      if (heading && headingIndex > 0) {
+        const beforeHeading = bodyText.slice(0, headingIndex).trim().split('\n').map(s => s.trim()).filter(Boolean);
+        const candidate = beforeHeading.at(-1);
+        if (candidate && candidate !== heading) return candidate;
+      }
+
+      return '';
+    });
+  } catch {
+    return '';
+  } finally {
+    await page.close();
+  }
 }
 
 // ─── Pagination helper ────────────────────────────────────────────────────────
@@ -193,16 +264,13 @@ async function goToNextPage(page) {
 /**
  * Converts one raw extracted card into a normalised job object.
  */
-function buildJob(raw, today) {
-  const datePosted = parseDateText(raw.dateRaw, today);
-  if (!raw.dateRaw) console.log(`  [builtin-austin] no date found for "${raw.title}" — using today`);
+function buildJob(raw) {
   return {
     title:      raw.title,
     company:    raw.company  || '',
     location:   raw.location || 'Austin, TX',
     salary:     cleanSalary(raw.salary),
     sourceUrl:  raw.href,
-    datePosted,
   };
 }
 
@@ -211,12 +279,11 @@ function buildJob(raw, today) {
  * appending results to `jobs` until `max` is reached.
  *
  * @param {import('playwright').Page} page
- * @param {string} today
  * @param {number} max
  * @param {Set<string>} seen
  * @param {Array} jobs
  */
-async function drainPages(page, today, max, seen, jobs) {
+async function drainPages(page, max, seen, jobs) {
   let hasMore = true;
   let firstBatchLogged = false;
 
@@ -232,8 +299,9 @@ async function drainPages(page, today, max, seen, jobs) {
     for (const raw of extracted) {
       if (jobs.length >= max) break;
       if (!raw.title || !raw.href || seen.has(raw.href)) continue;
+      if (!looksRelevantBuiltinRole(raw)) continue;
       seen.add(raw.href);
-      jobs.push(buildJob(raw, today));
+      jobs.push(buildJob(raw));
     }
 
     console.log(`  [builtin-austin] ${jobs.length} jobs collected so far`);
@@ -250,11 +318,10 @@ async function drainPages(page, today, max, seen, jobs) {
  *
  * @param {import('playwright').Browser} browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl}>>}
  */
 async function scrapeBuiltinAustin(browser, config) {
   const max   = config.scraper.maxJobsPerSource;
-  const today = new Date().toISOString().split('T')[0];
   const seen  = new Set();
   const jobs  = [];
 
@@ -280,7 +347,7 @@ async function scrapeBuiltinAustin(browser, config) {
           )
           .catch(() => {});
 
-        await drainPages(page, today, max, seen, jobs);
+        await drainPages(page, max, seen, jobs);
         await page.waitForTimeout(2000);
       } catch (err) {
         console.error(`  [builtin-austin] error on ${startUrl}:`, err.message);
@@ -288,6 +355,19 @@ async function scrapeBuiltinAustin(browser, config) {
     }
   } finally {
     await page.close();
+  }
+
+  for (const job of jobs) {
+    if (job.company && job.company.trim()) continue;
+
+    console.log(`  [builtin-austin] DEBUG blank company raw job:`, JSON.stringify(job, null, 2));
+    const detailCompany = await fetchBuiltinCompanyFromDetail(browser, job.sourceUrl);
+    if (detailCompany) {
+      job.company = detailCompany;
+      console.log(`  [builtin-austin] recovered company from detail page: ${detailCompany}`);
+    } else {
+      console.log(`  [builtin-austin] company still blank after detail-page fallback: ${job.sourceUrl}`);
+    }
   }
 
   return jobs;

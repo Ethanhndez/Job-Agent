@@ -37,7 +37,7 @@ const GREENHOUSE_COMPANIES = [
 const ML_TITLE_KEYWORDS = [
   'machine learning', 'ml ', 'ai ', 'artificial intelligence',
   'deep learning', 'nlp', 'llm', 'data science', 'computer vision',
-  'research engineer', 'applied scientist',
+  'research engineer', 'applied scientist', 'intern', 'co-op', 'coop',
 ];
 
 /**
@@ -58,10 +58,9 @@ function looksLikeMlRole(title) {
  *
  * @param {string} token    - Greenhouse board token
  * @param {string} company  - Human-readable company name (for fallback)
- * @param {string} today    - ISO date string
  * @returns {Promise<Array>} Raw job objects for ML-adjacent roles
  */
-async function fetchGreenhouseBoard(token, company, today) {
+async function fetchGreenhouseBoard(token, company) {
   const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${token}/jobs?content=true`;
 
   let data;
@@ -90,17 +89,12 @@ async function fetchGreenhouseBoard(token, company, today) {
 
       const location = j.location?.name || '';
 
-      const datePosted = j.updated_at
-        ? j.updated_at.split('T')[0]
-        : today;
-
       return {
         title:       j.title       || 'Not listed',
         company:     j.company     ? j.company.name : company,
         location,
         salary:      'Not listed',
         sourceUrl:   j.absolute_url || `https://boards.greenhouse.io/${token}/jobs/${j.id}`,
-        datePosted,
         description,
       };
     });
@@ -116,11 +110,10 @@ async function fetchGreenhouseBoard(token, company, today) {
  *
  * @param {import('playwright').Browser} _browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted,description}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl,description}>>}
  */
 async function scrapeGreenhouse(_browser, config) {
   const max   = config.scraper.maxJobsPerSource;
-  const today = new Date().toISOString().split('T')[0];
   const seen  = new Set();
   const jobs  = [];
 
@@ -130,7 +123,7 @@ async function scrapeGreenhouse(_browser, config) {
     console.log(`  [greenhouse] fetching board: ${name} (${token})`);
 
     try {
-      const board = await fetchGreenhouseBoard(token, name, today);
+      const board = await fetchGreenhouseBoard(token, name);
 
       for (const job of board) {
         if (jobs.length >= max) break;

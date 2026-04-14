@@ -1,6 +1,6 @@
 # job-agent
 
-An agent-based job search automation system that scrapes listings from multiple sources, filters them with a three-tier keyword system, writes structured records to a Notion workspace, and can auto-apply to matching roles — all orchestrated by Claude via the Anthropic API.
+An agent-based job search automation system that scrapes listings from multiple sources, filters them with a four-tier title/keyword/exclusion/location system, writes structured records to a Notion workspace, and can auto-apply to matching roles — all orchestrated by Claude via the Anthropic API.
 
 ---
 
@@ -105,7 +105,7 @@ Interactive prompt: paste a Notion page URL or job URL, review the tailored resu
 
 ## Filtering System
 
-Listings pass through three sequential gates before being written to Notion.
+Listings pass through four sequential gates before being written to Notion.
 
 ```js
 // Tier 1 — title must match at least one entry in config.jobTitles
@@ -123,7 +123,16 @@ const notExcluded = !config.excludeKeywords.some(k =>
   listing.description.toLowerCase().includes(k.toLowerCase())
 );
 
-const passes = titleMatch && keywordMatch && notExcluded;
+// Tier 4 — location must match a preferred location unless the role is remote
+const locationText = (listing.location || '').toLowerCase();
+const locationMatch =
+  config.preferredLocations.length === 0 ||
+  locationText.includes('remote') ||
+  config.preferredLocations.some(loc =>
+    locationText.includes(loc.toLowerCase())
+  );
+
+const passes = titleMatch && keywordMatch && notExcluded && locationMatch;
 ```
 
 Tune `config/user.config.js` to widen or narrow each tier independently.
@@ -141,15 +150,12 @@ The application agent asks Claude to identify the **top 3–5 bullet points** fr
 ```
 📁 Job Search (parent page you configure)
 └── 🗃️ Job Listings (database created by setup.js)
-    ├── Title
+    ├── Job Title
     ├── Company
     ├── Location
-    ├── Source
-    ├── URL
-    ├── Date Found
-    ├── Status          (New / Reviewing / Applied / Interviewing / Rejected / Offer)
-    ├── Fit Score       (1–10, set by Claude filter agent)
-    ├── Notes
+    ├── Salary
+    ├── Source URL
+    ├── Status          (New / Reviewing / Apply / Applied / Interviewing / Rejected / Offer)
     └── Applied Date
 ```
 
@@ -164,7 +170,6 @@ The application agent asks Claude to identify the **top 3–5 bullet points** fr
 | Location | City / Remote |
 | Source | Which scraper found it |
 | URL | Direct link to listing |
-| Date Found | ISO date scraped |
 | Status | Application stage |
 | Fit Score | 1–10 relevance score |
 | Applied Date | Date submitted |
@@ -177,6 +182,6 @@ The application agent asks Claude to identify the **top 3–5 bullet points** fr
 
 | Version | Milestone |
 |---------|-----------|
-| **v1.0** | Scrapers, three-tier filter, Notion writer, Excel tracker, GitHub Actions weekly run |
+| **v1.0** | Scrapers, four-tier filter, Notion writer, Excel tracker, GitHub Actions weekly run |
 | **v1.1** | `apply.js` auto-application flow with resume tailoring and cover letter generation |
 | **v2.0** | Interview prep agent, follow-up email drafter, multi-resume profile support |

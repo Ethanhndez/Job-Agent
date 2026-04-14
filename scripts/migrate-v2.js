@@ -8,7 +8,8 @@
  *   2. Rename "Date Found" → "Date Posted"
  *   3. Delete "Cover Letter" property
  *   4. Delete "Resume Version" property
- *   5. Backfill all pages where Salary is blank → "Not listed"
+ *   5. Store "Date Posted" as rich text
+ *   6. Backfill all pages where Salary is blank → "Not listed"
  *
  * Run once: node scripts/migrate-v2.js
  */
@@ -33,8 +34,8 @@ async function updateSchema() {
     properties: {
       // Rename title column
       'Title': { name: 'Job Title' },
-      // Rename date column
-      'Date Found': { name: 'Date Posted', date: {} },
+      // Rename and convert the posted-date column to rich text
+      'Date Found': { name: 'Date Posted', rich_text: {} },
       // Remove Job Listings-only columns (Applications DB keeps its own copies)
       'Cover Letter':   null,
       'Resume Version': null,
@@ -42,7 +43,7 @@ async function updateSchema() {
   });
 
   console.log('  ✓ "Title" → "Job Title"');
-  console.log('  ✓ "Date Found" → "Date Posted"');
+  console.log('  ✓ "Date Found" → "Date Posted" (rich text)');
   console.log('  ✓ "Cover Letter" removed');
   console.log('  ✓ "Resume Version" removed');
 }

@@ -35,7 +35,7 @@ const LEVER_COMPANIES = [
 const ML_TITLE_KEYWORDS = [
   'machine learning', 'ml ', ' ai ', 'artificial intelligence',
   'deep learning', 'nlp', 'llm', 'data science', 'computer vision',
-  'research engineer', 'applied scientist', 'research scientist',
+  'research engineer', 'applied scientist', 'research scientist', 'intern', 'co-op', 'coop',
 ];
 
 /**
@@ -54,10 +54,9 @@ function looksLikeMlRole(title) {
  *
  * @param {string} token    - Lever company token (subdomain in jobs.lever.co/{token})
  * @param {string} company  - Human-readable company name
- * @param {string} today    - ISO date string
  * @returns {Promise<Array>}
  */
-async function fetchLeverBoard(token, company, today) {
+async function fetchLeverBoard(token, company) {
   const apiUrl = `https://api.lever.co/v0/postings/${token}?mode=json`;
 
   let postings;
@@ -93,18 +92,12 @@ async function fetchLeverBoard(token, company, today) {
         else if (max)   salary = `up to ${sym}${fmt(max)}`;
       }
 
-      // Use the posting's creation timestamp when available.
-      const datePosted = p.createdAt
-        ? new Date(p.createdAt).toISOString().split('T')[0]
-        : today;
-
       return {
         title:       p.text        || 'Not listed',
         company,
         location,
         salary,
         sourceUrl:   p.hostedUrl   || `https://jobs.lever.co/${token}/${p.id}`,
-        datePosted,
         description,
       };
     });
@@ -119,11 +112,10 @@ async function fetchLeverBoard(token, company, today) {
  *
  * @param {import('playwright').Browser} _browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted,description}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl,description}>>}
  */
 async function scrapeLever(_browser, config) {
   const max   = config.scraper.maxJobsPerSource;
-  const today = new Date().toISOString().split('T')[0];
   const seen  = new Set();
   const jobs  = [];
 
@@ -133,7 +125,7 @@ async function scrapeLever(_browser, config) {
     console.log(`  [lever] fetching board: ${name} (${token})`);
 
     try {
-      const board = await fetchLeverBoard(token, name, today);
+      const board = await fetchLeverBoard(token, name);
 
       for (const job of board) {
         if (jobs.length >= max) break;

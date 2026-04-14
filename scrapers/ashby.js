@@ -36,7 +36,7 @@ const ASHBY_COMPANIES = [
 const ML_TITLE_KEYWORDS = [
   'machine learning', 'ml ', ' ai ', 'artificial intelligence',
   'deep learning', 'nlp', 'llm', 'data science', 'computer vision',
-  'research engineer', 'applied scientist', 'research scientist',
+  'research engineer', 'applied scientist', 'research scientist', 'intern', 'co-op', 'coop',
 ];
 
 /**
@@ -83,10 +83,9 @@ function formatAshbySalary(compensation) {
  *
  * @param {string} token    - Ashby company token (subdomain in jobs.ashbyhq.com/{token})
  * @param {string} company  - Human-readable company name
- * @param {string} today    - ISO date string
  * @returns {Promise<Array>}
  */
-async function fetchAshbyBoard(token, company, today) {
+async function fetchAshbyBoard(token, company) {
   const apiUrl =
     `https://api.ashbyhq.com/posting-api/job-board/${token}?includeCompensation=true`;
 
@@ -118,18 +117,12 @@ async function fetchAshbyBoard(token, company, today) {
 
       const salary = formatAshbySalary(p.compensation);
 
-      // Use the posting's published timestamp when available.
-      const datePosted = p.publishedAt
-        ? new Date(p.publishedAt).toISOString().split('T')[0]
-        : today;
-
       return {
         title:     p.title    || 'Not listed',
         company,
         location:  loc,
         salary,
         sourceUrl: p.jobUrl || `https://jobs.ashbyhq.com/${token}/${p.id}`,
-        datePosted,
         description,
       };
     });
@@ -144,11 +137,10 @@ async function fetchAshbyBoard(token, company, today) {
  *
  * @param {import('playwright').Browser} _browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted,description}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl,description}>>}
  */
 async function scrapeAshby(_browser, config) {
   const max   = config.scraper.maxJobsPerSource;
-  const today = new Date().toISOString().split('T')[0];
   const seen  = new Set();
   const jobs  = [];
 
@@ -158,7 +150,7 @@ async function scrapeAshby(_browser, config) {
     console.log(`  [ashby] fetching board: ${name} (${token})`);
 
     try {
-      const board = await fetchAshbyBoard(token, name, today);
+      const board = await fetchAshbyBoard(token, name);
 
       for (const job of board) {
         if (jobs.length >= max) break;

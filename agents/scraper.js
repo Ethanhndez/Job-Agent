@@ -6,7 +6,7 @@
  * Orchestrates the full scraping pipeline:
  *   1. Launches a Playwright browser
  *   2. Runs each scraper in sequence (avoiding parallel rate-limit / detection issues)
- *   3. For each raw job: fingerprint → filter → URL dedupe → fingerprint dedupe → Notion write
+ *   3. For each raw job: fingerprint → 4-tier filter → URL dedupe → fingerprint dedupe → Notion write
  *   4. Closes the browser and prints a summary
  *
  * Exported function:
@@ -21,12 +21,17 @@ const { Client }      = require('@notionhq/client');
 
 const {
   loadNotionConfig,
+  ensureJobListingsSchema,
   jobExistsByUrl,
   jobExistsByFingerprint,
   createJobPage,
 } = require('./notionWriter');
 
 const { generateFingerprint, applyFilters } = require('../utils/dedupe');
+const {
+  classifyEmploymentType,
+  classifyExperienceLevel,
+} = require('../utils/jobClassifier');
 
 const { scrapeWellfound }     = require('../scrapers/wellfound');
 const { scrapeGreenhouse }    = require('../scrapers/greenhouse');
@@ -56,7 +61,7 @@ const SCRAPERS = [
 
 /**
  * Processes a single raw job through the full pipeline:
- *   fingerprint → filter → URL dedupe → fingerprint dedupe → Notion write.
+ *   fingerprint → 4-tier filter → URL dedupe → fingerprint dedupe → Notion write.
  *
  * Returns a status string: 'written' | 'filtered' | 'duplicate'.
  *
@@ -75,7 +80,12 @@ async function processJob(rawJob, config, notionClient, dbId, stats) {
     rawJob.location
   );
 
-  const job = { ...rawJob, fingerprint };
+  const job = {
+    ...rawJob,
+    fingerprint,
+    employmentType: classifyEmploymentType(rawJob),
+    experienceLevel: classifyExperienceLevel(rawJob),
+  };
 
   // ── Tier filters ───────────────────────────────────────────────────────────
   const { pass, failedTier } = applyFilters(job, config);
@@ -202,6 +212,13 @@ async function runScraper() {
   // ── Init Notion client ─────────────────────────────────────────────────────
   const notionClient = new Client({ auth: process.env.NOTION_TOKEN });
   const dbId         = notionConfig.jobListingsDbId;
+
+  try {
+    await ensureJobListingsSchema(notionClient, dbId);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
 
   // ── Launch browser ─────────────────────────────────────────────────────────
   const browser = await chromium.launch({

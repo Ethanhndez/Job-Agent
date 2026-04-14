@@ -17,6 +17,10 @@ require('dotenv').config();
 const { Client } = require('@notionhq/client');
 const fs = require('fs');
 const path = require('path');
+const {
+  EMPLOYMENT_TYPE_OPTIONS,
+  EXPERIENCE_LEVEL_OPTIONS,
+} = require('./utils/jobClassifier');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -189,8 +193,15 @@ async function main() {
         'Source URL': {
           url: {},
         },
-        'Date Posted': {
-          date: {},
+        'Employment Type': {
+          select: {
+            options: EMPLOYMENT_TYPE_OPTIONS,
+          },
+        },
+        'Experience Level': {
+          select: {
+            options: EXPERIENCE_LEVEL_OPTIONS,
+          },
         },
         'Status': {
           select: {
@@ -342,7 +353,7 @@ function buildRootPageBlocks() {
     // ── How It Works ────────────────────────────────────────────────────────
     h2('How It Works'),
     bullet('Scrape — GitHub Actions runs every Sunday at 8am. Playwright visits 7 job boards and pulls matching listings.'),
-    bullet('Filter — 3-tier filter (title → keywords → location) keeps only relevant roles.'),
+    bullet('Filter — 4-tier filter (title → keywords → exclusions → location) keeps only relevant roles.'),
     bullet('Organize — New jobs are written to the Job Listings DB below. Duplicates are automatically skipped.'),
     bullet('Review — Browse the Job Listings DB, change Status to Apply on roles you want to pursue.'),
     bullet('Apply — Run node apply.js. Claude reads each job description and generates a tailored resume and cover letter.'),

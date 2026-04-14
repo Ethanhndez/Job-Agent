@@ -18,6 +18,55 @@ const USER_AGENT =
   'AppleWebKit/537.36 (KHTML, like Gecko) ' +
   'Chrome/124.0.0.0 Safari/537.36';
 
+const AI_TITLE_PATTERNS = [
+  /\bai\b/i,
+  /\bml\b/i,
+  /machine learning/i,
+  /artificial intelligence/i,
+  /applied ai/i,
+  /\bllm\b/i,
+  /\bnlp\b/i,
+  /generative ai/i,
+  /research engineer/i,
+  /research scientist/i,
+  /applied scientist/i,
+  /data scientist/i,
+  /data science/i,
+  /computer vision/i,
+  /deep learning/i,
+  /ai platform/i,
+  /ai infrastructure/i,
+  /\bagi\b/i,
+  /founding ai engineer/i,
+  /robotics/i,
+  /autonomy/i,
+  /autonomous/i,
+  /perception/i,
+  /\bintern(ship)?\b/i,
+  /\bco-?op\b/i,
+];
+
+const IRRELEVANT_TITLE_PATTERNS = [
+  /business development/i,
+  /\bsales\b/i,
+  /marketing/i,
+  /\blegal\b/i,
+  /counsel/i,
+  /attorney/i,
+  /\bsupport\b/i,
+  /customer success/i,
+  /partnership/i,
+  /\brecruit/i,
+  /\bproduct manager\b/i,
+  /product marketing/i,
+  /account executive/i,
+  /former founder/i,
+  /head of/i,
+  /director of/i,
+  /\bvp\b/i,
+  /vice president/i,
+];
+
 // ─── Salary / date helpers ────────────────────────────────────────────────────
 
 /**
@@ -40,30 +89,6 @@ function cleanSalary(raw) {
   if (singleMatch) return singleMatch[0];
 
   return 'Not listed';
-}
-
-/**
- * Converts a raw date string from the DOM ("3 days ago", "2024-04-10", etc.)
- * to an ISO 8601 date string (YYYY-MM-DD). Falls back to today on failure.
- */
-function parseDateText(raw, today) {
-  if (!raw || typeof raw !== 'string') return today;
-  const s = raw.trim();
-
-  const agoMatch = /(\d+)\s*(d\b|h\b|m\b|min|day|hour|week)/i.exec(s);
-  if (agoMatch) {
-    const n    = Number.parseInt(agoMatch[1], 10);
-    const unit = agoMatch[2].toLowerCase();
-    const d    = new Date();
-    if      (unit.startsWith('d')) d.setDate(d.getDate() - n);
-    else if (unit.startsWith('w')) d.setDate(d.getDate() - n * 7);
-    return d.toISOString().split('T')[0];
-  }
-
-  const parsed = new Date(s);
-  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
-
-  return today;
 }
 
 // Search URLs — role filter maps to "ML / AI" on workatastartup.com.
@@ -91,6 +116,15 @@ function extractYcJobs() {
   // workatastartup.com organises listings by company: each company section has
   // the company name at the top, with job rows below.  The company name is
   // therefore in an *ancestor* of the job row, not inside the row itself.
+
+  function splitCompany(rawCompany) { // NOSONAR
+    const text = (rawCompany || '').replace(/\s+/g, ' ').trim();
+    const [namePart, ...rest] = text.split('•');
+    return {
+      company: (namePart || '').replace(/\s+\([A-Z]\d+\)\s*$/i, '').trim() || 'Unknown',
+      context: rest.join(' • ').trim(),
+    };
+  }
 
   // Checks the element itself, then walks up to 6 ancestor levels.
   // Inner scope is intentional: page.evaluate serialises by value so outer
@@ -126,14 +160,16 @@ function extractYcJobs() {
       .filter(a => a.href.match(/\/jobs\/\d+/))
       .map(link => {
         const parent  = link.closest('div, li, article') || link.parentElement;
-        const company = findCompany(parent || link);
+        const company = splitCompany(findCompany(parent || link));
         const text    = parent ? parent.innerText : link.innerText;
         const lines   = text.split('\n').map(l => l.trim()).filter(Boolean);
         return {
           title:    lines[0] || link.innerText.trim(),
-          company:  company || lines[1] || 'Unknown',
+          company:  company.company || lines[1] || 'Unknown',
+          companyContext: company.context,
           location: lines[2] || '',
           salary:   '',
+          cardText: text.trim(),
           href:     link.href,
         };
       });
@@ -145,28 +181,69 @@ function extractYcJobs() {
     const salaryEl   = item.querySelector('[class*="salary"], [class*="compensation"]');
     const linkEl     = item.querySelector('a[href*="/jobs/"]') || titleEl;
 
-    // Date posted — prefer <time datetime="...">; fall back to relative text.
-    const timeEl = item.querySelector('time[datetime]') ||
-      item.querySelector('[class*="date"], [class*="posted"], [class*="time-ago"]');
-    let dateRaw = '';
-    if (timeEl) {
-      dateRaw = timeEl.getAttribute('datetime') || timeEl.innerText.trim();
-    } else {
-      const scanEl = Array.from(item.querySelectorAll('span, p, div'))
-        .find(el => el.children.length === 0 &&
-          /\d+\s*(d\b|h\b|day|hour|week|ago)/i.test(el.innerText));
-      if (scanEl) dateRaw = scanEl.innerText.trim();
-    }
+    const company = splitCompany(findCompany(item));
 
     return {
       title:    titleEl    ? titleEl.innerText.trim()    : '',
-      company:  findCompany(item) || 'Unknown',
+      company:  company.company,
+      companyContext: company.context,
       location: locationEl ? locationEl.innerText.trim() : '',
       salary:   salaryEl   ? salaryEl.innerText.trim()   : '',
-      dateRaw,
+      cardText: item.innerText.trim(),
       href:     linkEl     ? linkEl.href                 : '',
     };
   });
+}
+
+function looksRelevantYcRole(raw) {
+  const title = (raw.title || '').trim();
+  if (!title) return false;
+
+  if (IRRELEVANT_TITLE_PATTERNS.some(pattern => pattern.test(title))) {
+    return false;
+  }
+
+  if (!AI_TITLE_PATTERNS.some(pattern => pattern.test(title))) {
+    return false;
+  }
+
+  if (/\bintern(ship)?\b|\bco-?op\b/i.test(title)) {
+    return /machine learning|artificial intelligence|applied ai|\bai\b|\bml\b|data science|robotics|research|computer vision|perception|autonomy|autonomous/i.test(title);
+  }
+
+  return true;
+}
+
+/**
+ * Fetches the company name from a YC job detail page when the search-results
+ * page does not expose it reliably.
+ *
+ * @param {import('playwright').Browser} browser
+ * @param {string} url
+ * @returns {Promise<string>}
+ */
+async function fetchYcCompanyFromDetail(browser, url) {
+  const page = await browser.newPage();
+
+  try {
+    await page.setExtraHTTPHeaders({ 'User-Agent': USER_AGENT });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
+
+    return await page.evaluate(() => {
+      const companyLink = document.querySelector('a[href*="/companies/"]');
+      const companyText = companyLink?.innerText?.trim();
+      if (companyText) return companyText;
+
+      const h1 = document.querySelector('h1')?.innerText?.trim() || '';
+      const match = /\sat\s(.+?)(?:\s\([A-Z]\d+\))?$/.exec(h1);
+      return match ? match[1].trim() : '';
+    });
+  } catch {
+    return '';
+  } finally {
+    await page.close();
+  }
 }
 
 // ─── Pagination / infinite scroll helper ─────────────────────────────────────
@@ -218,27 +295,23 @@ async function loadMore(page) {
 /**
  * Converts one raw extracted item into a normalised job object.
  */
-function buildJob(raw, today) {
-  const datePosted = parseDateText(raw.dateRaw, today);
-  if (!raw.dateRaw) console.log(`  [yc-jobs] no date found for "${raw.title}" — using today`);
+function buildJob(raw) {
   return {
     title:      raw.title,
     company:    raw.company  || '',
     location:   raw.location || 'Remote',
     salary:     cleanSalary(raw.salary),
     sourceUrl:  raw.href,
-    datePosted,
   };
 }
 
 /**
  * @param {import('playwright').Page} page
- * @param {string} today
  * @param {number} max
  * @param {Set<string>} seen
  * @param {Array} jobs
  */
-async function drainJobs(page, today, max, seen, jobs) {
+async function drainJobs(page, max, seen, jobs) {
   let hasMore = true;
   let firstBatchLogged = false;
 
@@ -254,8 +327,9 @@ async function drainJobs(page, today, max, seen, jobs) {
     for (const raw of extracted) {
       if (jobs.length >= max) break;
       if (!raw.title || !raw.href || seen.has(raw.href)) continue;
+      if (!looksRelevantYcRole(raw)) continue;
       seen.add(raw.href);
-      jobs.push(buildJob(raw, today));
+      jobs.push(buildJob(raw));
     }
 
     console.log(`  [yc-jobs] ${jobs.length} jobs collected so far`);
@@ -274,11 +348,10 @@ async function drainJobs(page, today, max, seen, jobs) {
  *
  * @param {import('playwright').Browser} browser
  * @param {object} config
- * @returns {Promise<Array<{title,company,location,salary,sourceUrl,datePosted}>>}
+ * @returns {Promise<Array<{title,company,location,salary,sourceUrl}>>}
  */
 async function scrapeYcJobs(browser, config) {
   const max   = config.scraper.maxJobsPerSource;
-  const today = new Date().toISOString().split('T')[0];
   const seen  = new Set();
   const jobs  = [];
 
@@ -304,7 +377,7 @@ async function scrapeYcJobs(browser, config) {
           )
           .catch(() => {});
 
-        await drainJobs(page, today, max, seen, jobs);
+        await drainJobs(page, max, seen, jobs);
         await page.waitForTimeout(2000);
       } catch (err) {
         console.error(`  [yc-jobs] error on ${startUrl}:`, err.message);
@@ -312,6 +385,19 @@ async function scrapeYcJobs(browser, config) {
     }
   } finally {
     await page.close();
+  }
+
+  for (const job of jobs) {
+    if (job.company && job.company.trim()) continue;
+
+    console.log(`  [yc-jobs] DEBUG blank company raw job:`, JSON.stringify(job, null, 2));
+    const detailCompany = await fetchYcCompanyFromDetail(browser, job.sourceUrl);
+    if (detailCompany) {
+      job.company = detailCompany;
+      console.log(`  [yc-jobs] recovered company from detail page: ${detailCompany}`);
+    } else {
+      console.log(`  [yc-jobs] company still blank after detail-page fallback: ${job.sourceUrl}`);
+    }
   }
 
   return jobs;

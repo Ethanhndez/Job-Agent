@@ -39,17 +39,18 @@ function generateFingerprint(company, title, location) {
  *
  * Tier 1 — Title match (always enforced):
  *   job.title must case-insensitively contain at least one string from
- *   config.jobTitles.  Jobs whose titles don't match are dropped immediately.
+ *   config.jobTitles, and must not contain any string from
+ *   config.blockedJobTitles. Jobs whose titles don't match are dropped
+ *   immediately.
  *
- * Tier 2 — Keyword match (enforced only when description is present):
- *   job.description must contain at least one string from config.keywords.
- *   When the description is missing or empty the check is skipped and the job
- *   is passed through — scrapers that cannot capture a description inline
- *   should not have their results silently discarded.
+ * Tier 2 — Keyword match (enforced only when listing text is present):
+ *   job title / description / card text / company context must contain at
+ *   least one string from config.keywords. When all of that listing text is
+ *   missing or empty the check is skipped so thin sources are not discarded.
  *
- * Tier 3 — Exclude keyword (enforced only when description is present):
- *   job.description must NOT contain any string from config.excludeKeywords.
- *   Same skip-when-absent logic as Tier 2.
+ * Tier 3 — Exclude keyword (enforced only when listing text is present):
+ *   Combined listing text must NOT contain any string from
+ *   config.excludeKeywords. Same skip-when-absent logic as Tier 2.
  *
  * Tier 4 — Location match (enforced only when config.preferredLocations is non-empty):
  *   job.location must case-insensitively contain at least one string from
@@ -64,9 +65,23 @@ function generateFingerprint(company, title, location) {
  *   failedTier  — 1–4 indicating the first tier that rejected the job, or null on pass
  */
 function applyFilters(job, config) {
-  const title       = (job.title       || '').toLowerCase();
-  const description = (job.description || '').toLowerCase();
-  const location    = (job.location    || '').toLowerCase();
+  const title = (job.title || '').toLowerCase();
+  const location = (job.location || '').toLowerCase();
+  const listingText = [
+    job.title,
+    job.description,
+    job.cardText,
+    job.companyContext,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+
+  const blockedTitle = config.blockedJobTitles || [];
+  const blockedByTitle = blockedTitle.some(
+    t => title.includes(t.toLowerCase())
+  );
+  if (blockedByTitle) return { pass: false, failedTier: 1 };
 
   // ── Tier 1: title must match at least one target job title ──────────────────
   const passesTier1 = (config.jobTitles || []).some(
@@ -74,17 +89,17 @@ function applyFilters(job, config) {
   );
   if (!passesTier1) return { pass: false, failedTier: 1 };
 
-  // ── Tiers 2 & 3 require a description — skip if unavailable ────────────────
-  if (description) {
+  // ── Tiers 2 & 3 require listing text — skip if unavailable ─────────────────
+  if (listingText) {
     // ── Tier 2: at least one keyword must appear in the description ────────────
     const passesTier2 = (config.keywords || []).some(
-      k => description.includes(k.toLowerCase())
+      k => listingText.includes(k.toLowerCase())
     );
     if (!passesTier2) return { pass: false, failedTier: 2 };
 
     // ── Tier 3: no exclude keyword may appear in the description ──────────────
     const failsTier3 = (config.excludeKeywords || []).some(
-      k => description.includes(k.toLowerCase())
+      k => listingText.includes(k.toLowerCase())
     );
     if (failsTier3) return { pass: false, failedTier: 3 };
   }

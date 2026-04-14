@@ -9,6 +9,7 @@
  *
  * Exported functions:
  *   loadNotionConfig()
+ *   ensureJobListingsSchema(notionClient, dbId)
  *   jobExistsByUrl(notionClient, dbId, url)
  *   jobExistsByFingerprint(notionClient, dbId, fingerprint)
  *   createJobPage(notionClient, dbId, job)
@@ -19,6 +20,10 @@
 
 const fs   = require('node:fs');
 const path = require('node:path');
+const {
+  EMPLOYMENT_TYPE_OPTIONS,
+  EXPERIENCE_LEVEL_OPTIONS,
+} = require('../utils/jobClassifier');
 
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'notion.config.json');
 
@@ -46,6 +51,90 @@ function loadNotionConfig() {
   } catch (err) {
     throw new Error(`Failed to parse config/notion.config.json: ${err.message}`);
   }
+}
+
+// ─── Schema checks ────────────────────────────────────────────────────────────
+
+/**
+ * Ensures the Job Listings DB contains the expected select property used by
+ * the current scraper pipeline.
+ *
+ * @param {import('@notionhq/client').Client} notionClient
+ * @param {string} dbId
+ * @returns {Promise<void>}
+ */
+async function ensureJobListingsSchema(notionClient, dbId) {
+  try {
+    const database = await notionClient.databases.retrieve({ database_id: dbId });
+    const employmentType = database.properties['Employment Type'];
+    const experienceLevel = database.properties['Experience Level'];
+
+    const schemaPatch = {};
+
+    const employmentPatch = buildSelectPropertyPatch(
+      employmentType,
+      EMPLOYMENT_TYPE_OPTIONS
+    );
+    if (employmentPatch) {
+      schemaPatch['Employment Type'] = employmentPatch;
+    }
+
+    const experiencePatch = buildSelectPropertyPatch(
+      experienceLevel,
+      EXPERIENCE_LEVEL_OPTIONS
+    );
+    if (experiencePatch) {
+      schemaPatch['Experience Level'] = experiencePatch;
+    }
+
+    if (Object.keys(schemaPatch).length === 0) {
+      return;
+    }
+
+    await notionClient.databases.update({
+      database_id: dbId,
+      properties: schemaPatch,
+    });
+  } catch (err) {
+    throw new Error(`ensureJobListingsSchema: failed to verify Job Listings schema — ${err.message}`);
+  }
+}
+
+function buildSelectPropertyPatch(property, desiredOptions) {
+  if (property?.type !== 'select') {
+    return {
+      select: {
+        options: desiredOptions,
+      },
+    };
+  }
+
+  const currentOptions = property.select.options || [];
+  const optionsByName = new Map(
+    currentOptions.map(option => [option.name, option])
+  );
+
+  const needsUpdate = desiredOptions.some(option => {
+    const current = optionsByName.get(option.name);
+    return !current || current.color !== option.color;
+  });
+
+  if (!needsUpdate) {
+    return null;
+  }
+
+  return {
+    select: {
+      options: desiredOptions.map(option => {
+        const current = optionsByName.get(option.name);
+        if (current?.id) {
+          return { id: current.id, name: option.name, color: option.color };
+        }
+
+        return option;
+      }),
+    },
+  };
 }
 
 // ─── Deduplication checks ─────────────────────────────────────────────────────
@@ -122,7 +211,8 @@ async function jobExistsByFingerprint(notionClient, dbId, fingerprint) {
  *     location:    string,
  *     salary:      string,  // empty string if not available
  *     sourceUrl:   string,
- *     datePosted:  string,  // ISO 8601 date string, e.g. "2025-04-13"
+ *     employmentType: string, // Internship | Full-Time | Unknown
+ *     experienceLevel: string, // Internship | Entry Level | Associate | Mid Level | Senior | Staff+ | Unknown
  *     fingerprint: string,  // hash from dedupe.js
  *   }
  *
@@ -151,8 +241,11 @@ async function createJobPage(notionClient, dbId, job) {
         'Source URL': {
           url: job.sourceUrl,
         },
-        'Date Posted': {
-          date: { start: job.datePosted },
+        'Employment Type': {
+          select: { name: job.employmentType || 'Unknown' },
+        },
+        'Experience Level': {
+          select: { name: job.experienceLevel || 'Unknown' },
         },
         'Status': {
           select: { name: 'New' },
@@ -312,6 +405,7 @@ async function createApplicationEntry(notionClient, appDbId, application) {
 
 module.exports = {
   loadNotionConfig,
+  ensureJobListingsSchema,
   jobExistsByUrl,
   jobExistsByFingerprint,
   createJobPage,
